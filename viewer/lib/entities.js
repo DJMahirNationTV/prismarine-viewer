@@ -6,18 +6,28 @@ const { dispose3 } = require('./dispose')
 
 const { createCanvas } = require('canvas')
 
+const skinCache = {}
+
+// Get the best skin URL for a username
+function getSkinUrl(username) {
+  // Try crafatar first (most reliable)
+  return `https://crafatar.com/skins/${username}`
+}
+
 function getEntityMesh (entity, scene) {
   if (entity.name) {
     try {
-      const e = new Entity('1.16.4', entity.name, scene)
+      // Get skin URL if this is a player
+      const skinUrl = entity.username ? getSkinUrl(entity.username) : null
+      const e = new Entity('1.16.4', entity.name, scene, skinUrl)
 
       if (entity.username !== undefined) {
+        // Create nametag
         const canvas = createCanvas(512, 128)
-
         const ctx = canvas.getContext('2d')
         
         // Use a bold, readable font
-        ctx.font = 'bold 48px Minecraft, monospace, Arial'
+        ctx.font = 'bold 48px monospace'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
 
@@ -46,14 +56,14 @@ function getEntityMesh (entity, scene) {
           depthWrite: false
         })
         const sprite = new THREE.Sprite(spriteMat)
-        sprite.scale.set(2, 0.5, 1) // Make it wider and shorter
+        sprite.scale.set(2, 0.5, 1)
         sprite.position.y += entity.height + 0.6
 
         e.mesh.add(sprite)
         
-        // Try to load and apply Minecraft skin if username is available
+        // Load Minecraft skin for the player
         if (entity.username) {
-          loadMinecraftSkin(e.mesh, entity.username)
+          loadMinecraftSkinForEntity(e.mesh, entity.username)
         }
       }
       return e.mesh
@@ -69,61 +79,76 @@ function getEntityMesh (entity, scene) {
   return cube
 }
 
-// Function to load Minecraft skin from Mojang API or crafatar
-function loadMinecraftSkin(mesh, username) {
+// Function to load Minecraft skin and apply it to the entity
+function loadMinecraftSkinForEntity(mesh, username) {
+  // Check cache first
+  if (skinCache[username]) {
+    applySkinToMesh(mesh, skinCache[username])
+    return
+  }
+
   // Try multiple skin services
   const skinUrls = [
     `https://crafatar.com/skins/${username}`,
-    `https://minotar.net/skin/${username}`
+    `https://minotar.net/skin/${username}`,
+    `https://mc-heads.net/minecraft/skin/${username}`
   ]
   
   const loader = new THREE.TextureLoader()
   
   function tryLoadSkin(index) {
     if (index >= skinUrls.length) {
-      console.log(`Could not load skin for ${username}`)
+      console.log(`Could not load skin for ${username} from any source`)
       return
     }
     
     loader.load(
       skinUrls[index],
       (texture) => {
+        // Configure texture for pixel-perfect Minecraft look
         texture.magFilter = THREE.NearestFilter
         texture.minFilter = THREE.NearestFilter
         texture.generateMipmaps = false
+        texture.wrapS = THREE.RepeatWrapping
+        texture.wrapT = THREE.RepeatWrapping
         
-        // Apply texture to the player model
-        // This assumes the Entity mesh has materials we can update
-        mesh.traverse((child) => {
-          if (child.isMesh && child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(mat => {
-                if (mat.map === null || mat.name === 'skin') {
-                  mat.map = texture
-                  mat.needsUpdate = true
-                }
-              })
-            } else {
-              if (child.material.map === null || child.material.name === 'skin') {
-                child.material.map = texture
-                child.material.needsUpdate = true
-              }
-            }
-          }
-        })
+        // Cache the skin
+        skinCache[username] = texture
         
-        console.log(`Loaded skin for ${username}`)
+        // Apply to mesh
+        applySkinToMesh(mesh, texture)
+        
+        console.log(`✓ Loaded skin for ${username} from ${skinUrls[index]}`)
       },
       undefined,
       (error) => {
         // Try next URL on error
-        console.log(`Failed to load skin from ${skinUrls[index]}, trying next...`)
+        console.log(`✗ Failed to load skin from ${skinUrls[index]}, trying next...`)
         tryLoadSkin(index + 1)
       }
     )
   }
   
   tryLoadSkin(0)
+}
+
+// Apply skin texture to all materials in the entity mesh
+function applySkinToMesh(mesh, skinTexture) {
+  mesh.traverse((child) => {
+    if (child.isMesh || child instanceof THREE.SkinnedMesh) {
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => {
+            mat.map = skinTexture
+            mat.needsUpdate = true
+          })
+        } else {
+          child.material.map = skinTexture
+          child.material.needsUpdate = true
+        }
+      }
+    }
+  })
 }
 
 class Entities {
