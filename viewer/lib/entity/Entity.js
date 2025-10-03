@@ -128,7 +128,7 @@ function addCube (attr, boneId, bone, cube, texWidth = 64, texHeight = 64) {
   }
 }
 
-function getMesh (texture, jsonModel) {
+function getMesh (texture, jsonModel, customTextureUrl = null) {
   const bones = {}
 
   const geoData = {
@@ -183,25 +183,40 @@ function getMesh (texture, jsonModel) {
   geometry.setIndex(geoData.indices)
 
   const material = new THREE.MeshLambertMaterial({ transparent: true, skinning: true, alphaTest: 0.1 })
+  material.name = 'skin' // Mark this material for skin replacement
   const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.add(...rootBones)
   mesh.bind(skeleton)
   mesh.scale.set(1 / 16, 1 / 16, 1 / 16)
 
-  loadTexture(texture, texture => {
-    texture.magFilter = THREE.NearestFilter
-    texture.minFilter = THREE.NearestFilter
-    texture.flipY = false
-    texture.wrapS = THREE.RepeatWrapping
-    texture.wrapT = THREE.RepeatWrapping
-    material.map = texture
-  })
+  // Load texture - use custom URL if provided, otherwise use default
+  if (customTextureUrl) {
+    const loader = new THREE.TextureLoader()
+    loader.load(customTextureUrl, texture => {
+      texture.magFilter = THREE.NearestFilter
+      texture.minFilter = THREE.NearestFilter
+      texture.flipY = false
+      texture.wrapS = THREE.RepeatWrapping
+      texture.wrapT = THREE.RepeatWrapping
+      material.map = texture
+      material.needsUpdate = true
+    })
+  } else {
+    loadTexture(texture, texture => {
+      texture.magFilter = THREE.NearestFilter
+      texture.minFilter = THREE.NearestFilter
+      texture.flipY = false
+      texture.wrapS = THREE.RepeatWrapping
+      texture.wrapT = THREE.RepeatWrapping
+      material.map = texture
+    })
+  }
 
   return mesh
 }
 
 class Entity {
-  constructor (version, type, scene) {
+  constructor (version, type, scene, customSkinUrl = null) {
     const e = entities[type]
     if (!e) throw new Error(`Unknown entity ${type}`)
 
@@ -209,11 +224,11 @@ class Entity {
     for (const [name, jsonModel] of Object.entries(e.geometry)) {
       const texture = e.textures[name]
       if (!texture) continue
-      // console.log(JSON.stringify(jsonModel, null, 2))
-      const mesh = getMesh(texture.replace('textures', 'textures/' + version) + '.png', jsonModel)
-      /* const skeletonHelper = new THREE.SkeletonHelper( mesh )
-      skeletonHelper.material.linewidth = 2
-      scene.add( skeletonHelper ) */
+      
+      // Use custom skin URL for player entity, otherwise use default texture
+      const texturePath = customSkinUrl || (texture.replace('textures', 'textures/' + version) + '.png')
+      const mesh = getMesh(texturePath, jsonModel, customSkinUrl)
+      
       this.mesh.add(mesh)
     }
   }
