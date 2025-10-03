@@ -12,24 +12,49 @@ function getEntityMesh (entity, scene) {
       const e = new Entity('1.16.4', entity.name, scene)
 
       if (entity.username !== undefined) {
-        const canvas = createCanvas(500, 100)
+        const canvas = createCanvas(512, 128)
 
         const ctx = canvas.getContext('2d')
-        ctx.font = '50pt Arial'
-        ctx.fillStyle = '#000000'
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'top'
+        
+        // Use a bold, readable font
+        ctx.font = 'bold 48px Minecraft, monospace, Arial'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
 
         const txt = entity.username
-        ctx.fillText(txt, 100, 0)
+        
+        // Add a dark background for contrast
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        
+        // Add text shadow for better readability
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
+        ctx.shadowBlur = 4
+        ctx.shadowOffsetX = 2
+        ctx.shadowOffsetY = 2
+        
+        // Draw white text
+        ctx.fillStyle = '#FFFFFF'
+        ctx.fillText(txt, canvas.width / 2, canvas.height / 2)
 
         const tex = new THREE.Texture(canvas)
         tex.needsUpdate = true
-        const spriteMat = new THREE.SpriteMaterial({ map: tex })
+        const spriteMat = new THREE.SpriteMaterial({ 
+          map: tex,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false
+        })
         const sprite = new THREE.Sprite(spriteMat)
+        sprite.scale.set(2, 0.5, 1) // Make it wider and shorter
         sprite.position.y += entity.height + 0.6
 
         e.mesh.add(sprite)
+        
+        // Try to load and apply Minecraft skin if username is available
+        if (entity.username) {
+          loadMinecraftSkin(e.mesh, entity.username)
+        }
       }
       return e.mesh
     } catch (err) {
@@ -42,6 +67,63 @@ function getEntityMesh (entity, scene) {
   const material = new THREE.MeshBasicMaterial({ color: 0xff00ff })
   const cube = new THREE.Mesh(geometry, material)
   return cube
+}
+
+// Function to load Minecraft skin from Mojang API or crafatar
+function loadMinecraftSkin(mesh, username) {
+  // Try multiple skin services
+  const skinUrls = [
+    `https://crafatar.com/skins/${username}`,
+    `https://minotar.net/skin/${username}`
+  ]
+  
+  const loader = new THREE.TextureLoader()
+  
+  function tryLoadSkin(index) {
+    if (index >= skinUrls.length) {
+      console.log(`Could not load skin for ${username}`)
+      return
+    }
+    
+    loader.load(
+      skinUrls[index],
+      (texture) => {
+        texture.magFilter = THREE.NearestFilter
+        texture.minFilter = THREE.NearestFilter
+        texture.generateMipmaps = false
+        
+        // Apply texture to the player model
+        // This assumes the Entity mesh has materials we can update
+        mesh.traverse((child) => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(mat => {
+                if (mat.map === null || mat.name === 'skin') {
+                  mat.map = texture
+                  mat.needsUpdate = true
+                }
+              })
+            } else {
+              if (child.material.map === null || child.material.name === 'skin') {
+                child.material.map = texture
+                child.material.needsUpdate = true
+              }
+            }
+          }
+        })
+        
+        console.log(`Loaded skin for ${username}`)
+      },
+      undefined,
+      (error) => {
+        // Try next URL on error
+        console.log(`Failed to load skin from ${skinUrls[index]}, trying next...`)
+        tryLoadSkin(index + 1)
+      }
+    )
+  }
+  
+  tryLoadSkin(0)
 }
 
 class Entities {
