@@ -11,7 +11,7 @@ const skinCache = {}
 // Get the best skin URL for a username
 function getSkinUrl(username) {
   // Try crafatar first (most reliable)
-  return `https://crafatar.com/skins/${username}`
+  return `https://mineskin.eu/skin/${username}`
 }
 
 function getEntityMesh (entity, scene) {
@@ -89,9 +89,8 @@ function loadMinecraftSkinForEntity(mesh, username) {
 
   // Try multiple skin services
   const skinUrls = [
-    `https://crafatar.com/skins/${username}`,
-    `https://minotar.net/skin/${username}`,
-    `https://mc-heads.net/minecraft/skin/${username}`
+    `https://mineskin.eu/skin/${username}`,
+    `https://starlightskins.lunareclipse.studio/render/skin/${username}/default`
   ]
   
   const loader = new THREE.TextureLoader()
