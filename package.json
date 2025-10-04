@@ -1,18 +1,37 @@
 {
-  "name": "prismarine-viewer",
-  "version": "1.33.0",
-  "description": "Web based viewer",
-  "main": "index.js",
-  "scripts": {
-    "jestTest": "jest --verbose --runInBand --forceExit",
-    "test": "npm run test",
-    "pretest": "npm run lint",
-    "lint": "standard",
-    "prepare": "node viewer/prerender.js && webpack",
-    "fix": "standard --fix"
-  },
-  "author": "PrismarineJS",
+  "name": "@djmahirnationtv/prismarine-viewer",
+  "version": "1.33.1",
+  "description": "Web based viewer with fixed Nametags, Skins and 3D Rendering Animations",
   "license": "MIT",
+  "author": "PrismarineJS & DJMahirNationTV",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "node viewer/prerender.js && webpack",
+    "prepublishOnly": "npm run build",
+    "lint": "standard",
+    "fix": "standard --fix",
+    "test": "npm run lint && jest --verbose --runInBand --forceExit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "viewer/dist",
+    "viewer/public",
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
   "standard": {
     "ignore": [
       "examples/electron/",
@@ -48,8 +67,6 @@
     "mineflayer": "^4.0.0",
     "mineflayer-pathfinder": "^2.0.0",
     "node-canvas-webgl": "PrismarineJS/node-canvas-webgl",
-    "prismarine-schematic": "^1.2.0",
-    "prismarine-viewer": "file:./",
     "process": "^0.11.10",
     "puppeteer": "^22.8.2",
     "standard": "^17.1.0",
