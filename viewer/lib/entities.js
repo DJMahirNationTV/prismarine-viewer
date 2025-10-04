@@ -6,18 +6,17 @@ const { dispose3 } = require('./dispose')
 
 const { createCanvas } = require('canvas')
 
-// Cache for loaded skins
-const skinCache = {}
-function getSkinUrl(username) {
-  // Try crafatar first (most reliable)
+function getSkinUrl (username) {
   return `https://mineskin.eu/skin/${username}`
 }
+
 function getEntityMesh (entity, scene) {
   if (entity.name) {
     try {
       // Get skin URL if this is a player
-      const skinUrl = entity.username ? getSkinUrl(entity.username) : null
+      const skinUrl = (entity.name === 'player' && entity.username) ? getSkinUrl(entity.username) : null
       const e = new Entity('1.16.4', entity.name, scene, skinUrl)
+      
 
       if (entity.username !== undefined) {
         // Create nametag
@@ -58,11 +57,6 @@ function getEntityMesh (entity, scene) {
         sprite.position.y += entity.height + 0.6
 
         e.mesh.add(sprite)
-        
-        // Load Minecraft skin for the player
-        if (entity.username) {
-          loadMinecraftSkinForEntity(e.mesh, entity.username)
-        }
       }
       return e.mesh
     } catch (err) {
@@ -75,77 +69,6 @@ function getEntityMesh (entity, scene) {
   const material = new THREE.MeshBasicMaterial({ color: 0xff00ff })
   const cube = new THREE.Mesh(geometry, material)
   return cube
-}
-
-// Function to load Minecraft skin and apply it to the entity
-function loadMinecraftSkinForEntity(mesh, username) {
-  // Check cache first
-  if (skinCache[username]) {
-    applySkinToMesh(mesh, skinCache[username])
-    return
-  }
-
-  // Try multiple skin services
-  const skinUrls = [
-    `https://mineskin.eu/skin/${username}`,
-    `https://starlightskins.lunareclipse.studio/render/skin/${username}/default`
-  ]
-  
-  const loader = new THREE.TextureLoader()
-  
-  function tryLoadSkin(index) {
-    if (index >= skinUrls.length) {
-      console.log(`Could not load skin for ${username} from any source`)
-      return
-    }
-    
-    loader.load(
-      skinUrls[index],
-      (texture) => {
-        // Configure texture for pixel-perfect Minecraft look
-        texture.magFilter = THREE.NearestFilter
-        texture.minFilter = THREE.NearestFilter
-        texture.generateMipmaps = false
-        texture.wrapS = THREE.RepeatWrapping
-        texture.wrapT = THREE.RepeatWrapping
-        
-        // Cache the skin
-        skinCache[username] = texture
-        
-        // Apply to mesh
-        applySkinToMesh(mesh, texture)
-        
-        console.log(`✓ Loaded skin for ${username} from ${skinUrls[index]}`)
-      },
-      undefined,
-      (error) => {
-        // Try next URL on error
-        console.log(`✗ Failed to load skin from ${skinUrls[index]}, trying next...`)
-        tryLoadSkin(index + 1)
-      }
-    )
-  }
-  
-  tryLoadSkin(0)
-}
-
-// Apply skin texture to all materials in the entity mesh
-function applySkinToMesh(mesh, skinTexture) {
-  mesh.traverse((child) => {
-    if (child.isMesh || child instanceof THREE.SkinnedMesh) {
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(mat => {
-            mat.map = skinTexture
-            mat.needsUpdate = true
-          })
-        } else {
-          child.material.map = skinTexture
-          child.material.needsUpdate = true
-        }
-      }
-    }
-  })
 }
 
 class Entities {

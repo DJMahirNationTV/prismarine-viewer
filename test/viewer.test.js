@@ -9,7 +9,7 @@ const TIMEOUT_SCREENSHOT = 2 * 60 * 1000
 
 // Test configuration for external server
 const SERVER_CONFIG = {
-  host: 'localhost',
+  host: 'mc.mineland.net',
   port: 25565,
   version: '1.21'
 }
@@ -31,7 +31,7 @@ describe('client connecting to external server', function () {
       const bot = mineflayer.createBot({
         host: SERVER_CONFIG.host,
         port: SERVER_CONFIG.port,
-        username: `TestBot_${Math.floor(Math.random() * 1000)}`, // Random username to avoid conflicts
+        username: `DJMahir_Work`, // Random username to avoid conflicts
         version: SERVER_CONFIG.version,
         auth: 'offline' // Use offline mode - change to 'microsoft' if you have a premium account
       })

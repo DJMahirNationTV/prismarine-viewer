@@ -182,52 +182,54 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(geoData.skinWeights, 4))
   geometry.setIndex(geoData.indices)
 
-  // Use MeshBasicMaterial for better Minecraft-style rendering
-  const material = new THREE.MeshBasicMaterial({ 
+  // Use MeshLambertMaterial for better lighting
+  const material = new THREE.MeshLambertMaterial({ 
     transparent: true, 
     skinning: true, 
-    alphaTest: 0.1,
-    side: THREE.DoubleSide
+    alphaTest: 0.1
   })
-  material.name = 'skin'
   const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.add(...rootBones)
   mesh.bind(skeleton)
   mesh.scale.set(1 / 16, 1 / 16, 1 / 16)
 
-  // Improved texture loading with proper Minecraft skin configuration
-  const loadAndApplyTexture = (url) => {
-    const loader = new THREE.TextureLoader()
-    loader.load(url, texture => {
-      // CRITICAL: Use NearestFilter for pixel-perfect Minecraft rendering
-      texture.magFilter = THREE.NearestFilter
-      texture.minFilter = THREE.NearestFilter
-      texture.generateMipmaps = false
-      texture.flipY = false // Minecraft textures are not flipped
-      texture.wrapS = THREE.ClampToEdgeWrapping
-      texture.wrapT = THREE.ClampToEdgeWrapping
-      
-      material.map = texture
-      material.needsUpdate = true
-      console.log(`✓ Applied skin texture: ${url}`)
-    }, undefined, (error) => {
-      console.error(`✗ Failed to load skin: ${url}`, error)
-    })
-  }
-
-  // Load custom skin if provided, otherwise use default texture
+  // Load texture (custom or default)
   if (customTextureUrl) {
-    loadAndApplyTexture(customTextureUrl)
+    const loader = new THREE.TextureLoader()
+    loader.load(
+      customTextureUrl,
+      (loadedTexture) => {
+        loadedTexture.magFilter = THREE.NearestFilter
+        loadedTexture.minFilter = THREE.NearestFilter
+        loadedTexture.generateMipmaps = false
+        loadedTexture.flipY = false
+        loadedTexture.wrapS = THREE.ClampToEdgeWrapping
+        loadedTexture.wrapT = THREE.ClampToEdgeWrapping
+        material.map = loadedTexture
+        material.needsUpdate = true
+      },
+      undefined,
+      (err) => {
+        // Fallback to default texture on error
+        console.warn(`Failed to load custom texture, using default`)
+        loadTexture(texture, loadedTexture => {
+          loadedTexture.magFilter = THREE.NearestFilter
+          loadedTexture.minFilter = THREE.NearestFilter
+          loadedTexture.flipY = false
+          loadedTexture.wrapS = THREE.RepeatWrapping
+          loadedTexture.wrapT = THREE.RepeatWrapping
+          material.map = loadedTexture
+        })
+      }
+    )
   } else {
     loadTexture(texture, loadedTexture => {
       loadedTexture.magFilter = THREE.NearestFilter
       loadedTexture.minFilter = THREE.NearestFilter
-      loadedTexture.generateMipmaps = false
       loadedTexture.flipY = false
-      loadedTexture.wrapS = THREE.ClampToEdgeWrapping
-      loadedTexture.wrapT = THREE.ClampToEdgeWrapping
+      loadedTexture.wrapS = THREE.RepeatWrapping
+      loadedTexture.wrapT = THREE.RepeatWrapping
       material.map = loadedTexture
-      material.needsUpdate = true
     })
   }
 
@@ -237,7 +239,11 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
 class Entity {
   constructor (version, type, scene, customSkinUrl = null) {
     const e = entities[type]
-    if (!e) throw new Error(`Unknown entity ${type}`)
+    if (!e) {
+      // Silently ignore unknown entities (like items, projectiles without models)
+      console.warn(`Unknown entity type: ${type}`)
+      throw new Error(`Unknown entity ${type}`)
+    }
 
     this.mesh = new THREE.Object3D()
     for (const [name, jsonModel] of Object.entries(e.geometry)) {
