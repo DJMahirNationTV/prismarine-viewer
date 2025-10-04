@@ -182,33 +182,52 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(geoData.skinWeights, 4))
   geometry.setIndex(geoData.indices)
 
-  const material = new THREE.MeshLambertMaterial({ transparent: true, skinning: true, alphaTest: 0.1 })
-  material.name = 'skin' // Mark this material for skin replacement
+  // Use MeshBasicMaterial for better Minecraft-style rendering
+  const material = new THREE.MeshBasicMaterial({ 
+    transparent: true, 
+    skinning: true, 
+    alphaTest: 0.1,
+    side: THREE.DoubleSide
+  })
+  material.name = 'skin'
   const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.add(...rootBones)
   mesh.bind(skeleton)
   mesh.scale.set(1 / 16, 1 / 16, 1 / 16)
 
-  // Load texture - use custom URL if provided, otherwise use default
-  if (customTextureUrl) {
+  // Improved texture loading with proper Minecraft skin configuration
+  const loadAndApplyTexture = (url) => {
     const loader = new THREE.TextureLoader()
-    loader.load(customTextureUrl, texture => {
+    loader.load(url, texture => {
+      // CRITICAL: Use NearestFilter for pixel-perfect Minecraft rendering
       texture.magFilter = THREE.NearestFilter
       texture.minFilter = THREE.NearestFilter
-      texture.flipY = false
-      texture.wrapS = THREE.RepeatWrapping
-      texture.wrapT = THREE.RepeatWrapping
+      texture.generateMipmaps = false
+      texture.flipY = false // Minecraft textures are not flipped
+      texture.wrapS = THREE.ClampToEdgeWrapping
+      texture.wrapT = THREE.ClampToEdgeWrapping
+      
       material.map = texture
       material.needsUpdate = true
+      console.log(`✓ Applied skin texture: ${url}`)
+    }, undefined, (error) => {
+      console.error(`✗ Failed to load skin: ${url}`, error)
     })
+  }
+
+  // Load custom skin if provided, otherwise use default texture
+  if (customTextureUrl) {
+    loadAndApplyTexture(customTextureUrl)
   } else {
-    loadTexture(texture, texture => {
-      texture.magFilter = THREE.NearestFilter
-      texture.minFilter = THREE.NearestFilter
-      texture.flipY = false
-      texture.wrapS = THREE.RepeatWrapping
-      texture.wrapT = THREE.RepeatWrapping
-      material.map = texture
+    loadTexture(texture, loadedTexture => {
+      loadedTexture.magFilter = THREE.NearestFilter
+      loadedTexture.minFilter = THREE.NearestFilter
+      loadedTexture.generateMipmaps = false
+      loadedTexture.flipY = false
+      loadedTexture.wrapS = THREE.ClampToEdgeWrapping
+      loadedTexture.wrapT = THREE.ClampToEdgeWrapping
+      material.map = loadedTexture
+      material.needsUpdate = true
     })
   }
 

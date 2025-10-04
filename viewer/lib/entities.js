@@ -6,14 +6,12 @@ const { dispose3 } = require('./dispose')
 
 const { createCanvas } = require('canvas')
 
+// Cache for loaded skins
 const skinCache = {}
-
-// Get the best skin URL for a username
 function getSkinUrl(username) {
   // Try crafatar first (most reliable)
   return `https://mineskin.eu/skin/${username}`
 }
-
 function getEntityMesh (entity, scene) {
   if (entity.name) {
     try {
