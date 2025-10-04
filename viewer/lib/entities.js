@@ -8,7 +8,6 @@ const { createCanvas } = require('canvas')
 
 const skinCache = {}
 
-// Get the best skin URL for a username
 function getSkinUrl(username) {
   return `https://mineskin.eu/skin/${username}`
 }
@@ -58,6 +57,8 @@ function getEntityMesh (entity, scene) {
           loadMinecraftSkinForEntity(e.mesh, entity.username)
         }
       }
+      
+      // Return the entity object with mesh
       return e
     } catch (err) {
       console.log(err)
@@ -68,7 +69,13 @@ function getEntityMesh (entity, scene) {
   geometry.translate(0, entity.height / 2, 0)
   const material = new THREE.MeshBasicMaterial({ color: 0xff00ff })
   const cube = new THREE.Mesh(geometry, material)
-  return { mesh: cube, updateAnimation: () => {} }
+  
+  // Return a dummy entity object for non-player entities
+  return { 
+    mesh: cube, 
+    updateAnimation: () => {},
+    animationState: { walkCycle: 0 }
+  }
 }
 
 function loadMinecraftSkinForEntity(mesh, username) {
@@ -141,9 +148,12 @@ class Entities {
   }
 
   clear () {
-    for (const mesh of Object.values(this.entities)) {
-      this.scene.remove(mesh.mesh)
-      dispose3(mesh.mesh)
+    for (const entityId in this.entities) {
+      const e = this.entities[entityId]
+      if (e && e.mesh) {
+        this.scene.remove(e.mesh)
+        dispose3(e.mesh)
+      }
     }
     this.entities = {}
     this.entityStates = {}
@@ -152,12 +162,14 @@ class Entities {
   update (entity) {
     if (!this.entities[entity.id]) {
       const entityObj = getEntityMesh(entity, this.scene)
-      if (!entityObj) return
+      if (!entityObj || !entityObj.mesh) return
+      
       this.entities[entity.id] = entityObj
       this.entityStates[entity.id] = {
         lastPos: entity.pos ? new THREE.Vector3(entity.pos.x, entity.pos.y, entity.pos.z) : new THREE.Vector3(),
         velocity: new THREE.Vector3(),
-        onGround: true
+        onGround: true,
+        lastUpdate: Date.now()
       }
       this.scene.add(entityObj.mesh)
     }
@@ -166,8 +178,10 @@ class Entities {
     const state = this.entityStates[entity.id]
 
     if (entity.delete) {
-      this.scene.remove(e.mesh)
-      dispose3(e.mesh)
+      if (e && e.mesh) {
+        this.scene.remove(e.mesh)
+        dispose3(e.mesh)
+      }
       delete this.entities[entity.id]
       delete this.entityStates[entity.id]
       return
@@ -175,26 +189,33 @@ class Entities {
 
     if (entity.pos) {
       const newPos = new THREE.Vector3(entity.pos.x, entity.pos.y, entity.pos.z)
+      const now = Date.now()
+      const deltaTime = (now - state.lastUpdate) / 1000 // seconds
       
       // Calculate velocity
-      if (state.lastPos) {
-        state.velocity.subVectors(newPos, state.lastPos)
+      if (state.lastPos && deltaTime > 0) {
+        state.velocity.subVectors(newPos, state.lastPos).divideScalar(deltaTime)
       }
       
       // Update position with tween
-      new TWEEN.Tween(e.mesh.position).to({ x: entity.pos.x, y: entity.pos.y, z: entity.pos.z }, 50).start()
+      new TWEEN.Tween(e.mesh.position).to({ 
+        x: entity.pos.x, 
+        y: entity.pos.y, 
+        z: entity.pos.z 
+      }, 50).start()
       
       state.lastPos.copy(newPos)
+      state.lastUpdate = now
       
       // Determine movement state
       const horizontalSpeed = Math.sqrt(state.velocity.x ** 2 + state.velocity.z ** 2)
-      const isMoving = horizontalSpeed > 0.001
-      const isFlying = Math.abs(state.velocity.y) > 0.05 && !state.onGround
-      const isFalling = state.velocity.y < -0.1
-      const isGliding = isFalling && Math.abs(state.velocity.y) < 0.3 && horizontalSpeed > 0.1
+      const isMoving = horizontalSpeed > 0.01
+      const isFlying = Math.abs(state.velocity.y) > 0.08 && !state.onGround
+      const isFalling = state.velocity.y < -0.2
+      const isGliding = isFalling && Math.abs(state.velocity.y) < 0.5 && horizontalSpeed > 0.2
       
-      // Update animation state
-      if (e.updateAnimation) {
+      // Update animation state immediately
+      if (e.updateAnimation && typeof e.updateAnimation === 'function') {
         e.updateAnimation(
           state.velocity,
           isFlying,
@@ -204,15 +225,15 @@ class Entities {
         )
       }
       
-      // Update onGround state based on vertical velocity
-      if (Math.abs(state.velocity.y) < 0.01) {
+      // Update onGround state
+      if (Math.abs(state.velocity.y) < 0.02) {
         state.onGround = true
-      } else if (state.velocity.y < -0.05) {
+      } else if (state.velocity.y < -0.1) {
         state.onGround = false
       }
     }
     
-    if (entity.yaw !== undefined) {
+    if (entity.yaw !== undefined && e.mesh) {
       const da = (entity.yaw - e.mesh.rotation.y) % (Math.PI * 2)
       const dy = 2 * da % (Math.PI * 2) - da
       new TWEEN.Tween(e.mesh.rotation).to({ y: e.mesh.rotation.y + dy }, 50).start()
@@ -223,17 +244,20 @@ class Entities {
   tick() {
     for (const entityId in this.entities) {
       const entity = this.entities[entityId]
-      if (entity.updateAnimation) {
-        const state = this.entityStates[entityId]
-        if (state) {
-          entity.updateAnimation(
-            state.velocity,
-            !state.onGround && state.velocity.y > 0,
-            false,
-            false,
-            !state.onGround && state.velocity.y < -0.1 && Math.sqrt(state.velocity.x ** 2 + state.velocity.z ** 2) > 0.1
-          )
-        }
+      const state = this.entityStates[entityId]
+      
+      if (entity && entity.updateAnimation && typeof entity.updateAnimation === 'function' && state) {
+        const horizontalSpeed = Math.sqrt(state.velocity.x ** 2 + state.velocity.z ** 2)
+        const isFlying = !state.onGround && state.velocity.y > 0.05
+        const isGliding = !state.onGround && state.velocity.y < -0.1 && horizontalSpeed > 0.1
+        
+        entity.updateAnimation(
+          state.velocity,
+          isFlying,
+          false,
+          false,
+          isGliding
+        )
       }
     }
   }
