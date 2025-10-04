@@ -10,40 +10,33 @@ const skinCache = {}
 
 // Get the best skin URL for a username
 function getSkinUrl(username) {
-  // Try crafatar first (most reliable)
   return `https://mineskin.eu/skin/${username}`
 }
 
 function getEntityMesh (entity, scene) {
   if (entity.name) {
     try {
-      // Get skin URL if this is a player
       const skinUrl = entity.username ? getSkinUrl(entity.username) : null
       const e = new Entity('1.16.4', entity.name, scene, skinUrl)
 
       if (entity.username !== undefined) {
-        // Create nametag
         const canvas = createCanvas(512, 128)
         const ctx = canvas.getContext('2d')
         
-        // Use a bold, readable font
         ctx.font = 'bold 48px monospace'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
 
         const txt = entity.username
         
-        // Add a dark background for contrast
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
         ctx.fillRect(0, 0, canvas.width, canvas.height)
         
-        // Add text shadow for better readability
         ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
         ctx.shadowBlur = 4
         ctx.shadowOffsetX = 2
         ctx.shadowOffsetY = 2
         
-        // Draw white text
         ctx.fillStyle = '#FFFFFF'
         ctx.fillText(txt, canvas.width / 2, canvas.height / 2)
 
@@ -61,12 +54,11 @@ function getEntityMesh (entity, scene) {
 
         e.mesh.add(sprite)
         
-        // Load Minecraft skin for the player
         if (entity.username) {
           loadMinecraftSkinForEntity(e.mesh, entity.username)
         }
       }
-      return e.mesh
+      return e
     } catch (err) {
       console.log(err)
     }
@@ -76,18 +68,15 @@ function getEntityMesh (entity, scene) {
   geometry.translate(0, entity.height / 2, 0)
   const material = new THREE.MeshBasicMaterial({ color: 0xff00ff })
   const cube = new THREE.Mesh(geometry, material)
-  return cube
+  return { mesh: cube, updateAnimation: () => {} }
 }
 
-// Function to load Minecraft skin and apply it to the entity
 function loadMinecraftSkinForEntity(mesh, username) {
-  // Check cache first
   if (skinCache[username]) {
     applySkinToMesh(mesh, skinCache[username])
     return
   }
 
-  // Try multiple skin services
   const skinUrls = [
     `https://mineskin.eu/skin/${username}`,
     `https://starlightskins.lunareclipse.studio/render/skin/${username}/default`
@@ -104,24 +93,19 @@ function loadMinecraftSkinForEntity(mesh, username) {
     loader.load(
       skinUrls[index],
       (texture) => {
-        // Configure texture for pixel-perfect Minecraft look
         texture.magFilter = THREE.NearestFilter
         texture.minFilter = THREE.NearestFilter
         texture.generateMipmaps = false
         texture.wrapS = THREE.RepeatWrapping
         texture.wrapT = THREE.RepeatWrapping
         
-        // Cache the skin
         skinCache[username] = texture
-        
-        // Apply to mesh
         applySkinToMesh(mesh, texture)
         
         console.log(`✓ Loaded skin for ${username} from ${skinUrls[index]}`)
       },
       undefined,
       (error) => {
-        // Try next URL on error
         console.log(`✗ Failed to load skin from ${skinUrls[index]}, trying next...`)
         tryLoadSkin(index + 1)
       }
@@ -131,7 +115,6 @@ function loadMinecraftSkinForEntity(mesh, username) {
   tryLoadSkin(0)
 }
 
-// Apply skin texture to all materials in the entity mesh
 function applySkinToMesh(mesh, skinTexture) {
   mesh.traverse((child) => {
     if (child.isMesh || child instanceof THREE.SkinnedMesh) {
@@ -154,39 +137,104 @@ class Entities {
   constructor (scene) {
     this.scene = scene
     this.entities = {}
+    this.entityStates = {}
   }
 
   clear () {
     for (const mesh of Object.values(this.entities)) {
-      this.scene.remove(mesh)
-      dispose3(mesh)
+      this.scene.remove(mesh.mesh)
+      dispose3(mesh.mesh)
     }
     this.entities = {}
+    this.entityStates = {}
   }
 
   update (entity) {
     if (!this.entities[entity.id]) {
-      const mesh = getEntityMesh(entity, this.scene)
-      if (!mesh) return
-      this.entities[entity.id] = mesh
-      this.scene.add(mesh)
+      const entityObj = getEntityMesh(entity, this.scene)
+      if (!entityObj) return
+      this.entities[entity.id] = entityObj
+      this.entityStates[entity.id] = {
+        lastPos: entity.pos ? new THREE.Vector3(entity.pos.x, entity.pos.y, entity.pos.z) : new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        onGround: true
+      }
+      this.scene.add(entityObj.mesh)
     }
 
     const e = this.entities[entity.id]
+    const state = this.entityStates[entity.id]
 
     if (entity.delete) {
-      this.scene.remove(e)
-      dispose3(e)
+      this.scene.remove(e.mesh)
+      dispose3(e.mesh)
       delete this.entities[entity.id]
+      delete this.entityStates[entity.id]
+      return
     }
 
     if (entity.pos) {
-      new TWEEN.Tween(e.position).to({ x: entity.pos.x, y: entity.pos.y, z: entity.pos.z }, 50).start()
+      const newPos = new THREE.Vector3(entity.pos.x, entity.pos.y, entity.pos.z)
+      
+      // Calculate velocity
+      if (state.lastPos) {
+        state.velocity.subVectors(newPos, state.lastPos)
+      }
+      
+      // Update position with tween
+      new TWEEN.Tween(e.mesh.position).to({ x: entity.pos.x, y: entity.pos.y, z: entity.pos.z }, 50).start()
+      
+      state.lastPos.copy(newPos)
+      
+      // Determine movement state
+      const horizontalSpeed = Math.sqrt(state.velocity.x ** 2 + state.velocity.z ** 2)
+      const isMoving = horizontalSpeed > 0.001
+      const isFlying = Math.abs(state.velocity.y) > 0.05 && !state.onGround
+      const isFalling = state.velocity.y < -0.1
+      const isGliding = isFalling && Math.abs(state.velocity.y) < 0.3 && horizontalSpeed > 0.1
+      
+      // Update animation state
+      if (e.updateAnimation) {
+        e.updateAnimation(
+          state.velocity,
+          isFlying,
+          entity.isSneaking || false,
+          entity.isSwimming || false,
+          isGliding
+        )
+      }
+      
+      // Update onGround state based on vertical velocity
+      if (Math.abs(state.velocity.y) < 0.01) {
+        state.onGround = true
+      } else if (state.velocity.y < -0.05) {
+        state.onGround = false
+      }
     }
-    if (entity.yaw) {
-      const da = (entity.yaw - e.rotation.y) % (Math.PI * 2)
+    
+    if (entity.yaw !== undefined) {
+      const da = (entity.yaw - e.mesh.rotation.y) % (Math.PI * 2)
       const dy = 2 * da % (Math.PI * 2) - da
-      new TWEEN.Tween(e.rotation).to({ y: e.rotation.y + dy }, 50).start()
+      new TWEEN.Tween(e.mesh.rotation).to({ y: e.mesh.rotation.y + dy }, 50).start()
+    }
+  }
+
+  // Call this in the render loop to update all animations
+  tick() {
+    for (const entityId in this.entities) {
+      const entity = this.entities[entityId]
+      if (entity.updateAnimation) {
+        const state = this.entityStates[entityId]
+        if (state) {
+          entity.updateAnimation(
+            state.velocity,
+            !state.onGround && state.velocity.y > 0,
+            false,
+            false,
+            !state.onGround && state.velocity.y < -0.1 && Math.sqrt(state.velocity.x ** 2 + state.velocity.z ** 2) > 0.1
+          )
+        }
+      }
     }
   }
 }

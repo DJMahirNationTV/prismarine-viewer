@@ -142,6 +142,7 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
   let i = 0
   for (const jsonBone of jsonModel.bones) {
     const bone = new THREE.Bone()
+    bone.name = jsonBone.name
     if (jsonBone.pivot) {
       bone.position.x = jsonBone.pivot[0]
       bone.position.y = jsonBone.pivot[1]
@@ -156,6 +157,10 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
       bone.rotation.y = -jsonBone.rotation[1] * Math.PI / 180
       bone.rotation.z = -jsonBone.rotation[2] * Math.PI / 180
     }
+    
+    // Store initial rotation for animation
+    bone.userData.initialRotation = bone.rotation.clone()
+    
     bones[jsonBone.name] = bone
 
     if (jsonBone.cubes) {
@@ -183,13 +188,16 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
   geometry.setIndex(geoData.indices)
 
   const material = new THREE.MeshLambertMaterial({ transparent: true, skinning: true, alphaTest: 0.1 })
-  material.name = 'skin' // Mark this material for skin replacement
+  material.name = 'skin'
   const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.add(...rootBones)
   mesh.bind(skeleton)
   mesh.scale.set(1 / 16, 1 / 16, 1 / 16)
 
-  // Load texture - use custom URL if provided, otherwise use default
+  // Store bones reference for animations
+  mesh.userData.bones = bones
+
+  // Load texture
   if (customTextureUrl) {
     const loader = new THREE.TextureLoader()
     loader.load(customTextureUrl, texture => {
@@ -221,16 +229,163 @@ class Entity {
     if (!e) throw new Error(`Unknown entity ${type}`)
 
     this.mesh = new THREE.Object3D()
+    this.type = type
+    this.animationState = {
+      isMoving: false,
+      isFlying: false,
+      isSneaking: false,
+      isSwimming: false,
+      isGliding: false,
+      isAttacking: false,
+      walkCycle: 0,
+      attackTime: 0,
+      velocity: new THREE.Vector3()
+    }
+    
     for (const [name, jsonModel] of Object.entries(e.geometry)) {
       const texture = e.textures[name]
       if (!texture) continue
       
-      // Use custom skin URL for player entity, otherwise use default texture
       const texturePath = customSkinUrl || (texture.replace('textures', 'textures/' + version) + '.png')
       const mesh = getMesh(texturePath, jsonModel, customSkinUrl)
       
       this.mesh.add(mesh)
     }
+  }
+
+  // Update animation based on movement
+  updateAnimation(velocity, isFlying, isSneaking, isSwimming, isGliding) {
+    const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
+    this.animationState.isMoving = speed > 0.01
+    this.animationState.velocity.copy(velocity)
+    this.animationState.isFlying = isFlying || false
+    this.animationState.isSneaking = isSneaking || false
+    this.animationState.isSwimming = isSwimming || false
+    this.animationState.isGliding = isGliding || false
+    
+    // Update walk cycle
+    if (this.animationState.isMoving) {
+      const walkSpeed = isFlying ? 0.3 : (isSneaking ? 0.08 : 0.15)
+      this.animationState.walkCycle += walkSpeed * (speed * 10)
+    }
+    
+    // Update attack timer
+    if (this.animationState.attackTime > 0) {
+      this.animationState.attackTime--
+    }
+    
+    this.applyAnimations()
+  }
+
+  // Trigger attack animation
+  attack() {
+    this.animationState.isAttacking = true
+    this.animationState.attackTime = 6
+  }
+
+  // Apply animations to bones
+  applyAnimations() {
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.SkinnedMesh && child.userData.bones) {
+        const bones = child.userData.bones
+        
+        // Reset bones to initial rotation
+        Object.values(bones).forEach(bone => {
+          if (bone.userData.initialRotation) {
+            bone.rotation.copy(bone.userData.initialRotation)
+          }
+        })
+        
+        // Apply walking animation
+        if (this.animationState.isMoving && !this.animationState.isFlying) {
+          const swing = Math.sin(this.animationState.walkCycle) * 0.6
+          const swingAbs = Math.abs(swing) * 0.3
+          
+          // Legs
+          if (bones.leftLeg) {
+            bones.leftLeg.rotation.x += swing
+          }
+          if (bones.rightLeg) {
+            bones.rightLeg.rotation.x -= swing
+          }
+          
+          // Arms (opposite of legs)
+          if (bones.leftArm) {
+            bones.leftArm.rotation.x -= swing * 0.6
+          }
+          if (bones.rightArm && this.animationState.attackTime === 0) {
+            bones.rightArm.rotation.x += swing * 0.6
+          }
+          
+          // Body bob
+          if (bones.body) {
+            bones.body.position.y = swingAbs * 0.5
+          }
+        }
+        
+        // Flying/swimming animation
+        if (this.animationState.isFlying || this.animationState.isSwimming) {
+          const swim = Math.sin(this.animationState.walkCycle * 2) * 0.3
+          
+          if (bones.leftLeg) {
+            bones.leftLeg.rotation.x = swim
+          }
+          if (bones.rightLeg) {
+            bones.rightLeg.rotation.x = -swim
+          }
+          if (bones.leftArm) {
+            bones.leftArm.rotation.x = -swim
+          }
+          if (bones.rightArm && this.animationState.attackTime === 0) {
+            bones.rightArm.rotation.x = swim
+          }
+        }
+        
+        // Gliding pose
+        if (this.animationState.isGliding) {
+          if (bones.leftArm) {
+            bones.leftArm.rotation.x = -Math.PI / 2
+            bones.leftArm.rotation.z = -0.3
+          }
+          if (bones.rightArm) {
+            bones.rightArm.rotation.x = -Math.PI / 2
+            bones.rightArm.rotation.z = 0.3
+          }
+          if (bones.leftLeg) {
+            bones.leftLeg.rotation.x = Math.PI / 4
+          }
+          if (bones.rightLeg) {
+            bones.rightLeg.rotation.x = Math.PI / 4
+          }
+        }
+        
+        // Sneaking pose
+        if (this.animationState.isSneaking && !this.animationState.isFlying) {
+          if (bones.body) {
+            bones.body.rotation.x = 0.5
+            bones.body.position.y = -2
+          }
+          if (bones.head) {
+            bones.head.rotation.x = -0.5
+          }
+          if (bones.leftLeg) {
+            bones.leftLeg.rotation.x += 0.5
+          }
+          if (bones.rightLeg) {
+            bones.rightLeg.rotation.x += 0.5
+          }
+        }
+        
+        // Attack animation
+        if (this.animationState.attackTime > 0) {
+          const attackProgress = this.animationState.attackTime / 6
+          if (bones.rightArm) {
+            bones.rightArm.rotation.x = -Math.PI / 2 + (1 - attackProgress) * Math.PI / 3
+            bones.rightArm.rotation.y = attackProgress * 0.5
+          }
+        }
+      }
+    })
   }
 }
 
