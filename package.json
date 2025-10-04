@@ -1,6 +1,6 @@
 {
   "name": "@djmahirnationtv/prismarine-viewer",
-  "version": "1.33.0",
+  "version": "1.33.1",
   "description": "Web based viewer with fixed Nametags, Skins and 3D Rendering Animations",
   "main": "index.js",
   "scripts": {
