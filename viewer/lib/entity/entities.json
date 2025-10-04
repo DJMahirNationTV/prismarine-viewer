@@ -11199,6 +11199,8 @@
         "visible_bounds_width": 1,
         "visible_bounds_height": 2,
         "visible_bounds_offset": [0, 1, 0],
+        "texturewidth": 64,
+        "textureheight": 64,
         "bones": [
           {"name": "root", "pivot": [0, 0, 0]},
           {
