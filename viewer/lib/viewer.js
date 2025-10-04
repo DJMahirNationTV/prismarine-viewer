@@ -116,8 +116,6 @@ class Viewer {
 
   update () {
     TWEEN.update()
-    // Update entity animations every frame
-    this.entities.tick()
   }
 
   async waitForChunksToRender () {
