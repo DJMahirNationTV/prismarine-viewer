@@ -196,6 +196,8 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
   // Load texture (custom or default)
   if (customTextureUrl) {
     const loader = new THREE.TextureLoader()
+    
+    // First try to load the custom skin
     loader.load(
       customTextureUrl,
       (loadedTexture) => {
@@ -210,16 +212,36 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
       },
       undefined,
       (err) => {
-        // Fallback to default texture on error
-        console.warn(`Failed to load custom texture, using default`)
-        loadTexture(texture, loadedTexture => {
-          loadedTexture.magFilter = THREE.NearestFilter
-          loadedTexture.minFilter = THREE.NearestFilter
-          loadedTexture.flipY = false
-          loadedTexture.wrapS = THREE.RepeatWrapping
-          loadedTexture.wrapT = THREE.RepeatWrapping
-          material.map = loadedTexture
-        })
+        // Fallback to Steve skin for cracked/non-existent accounts
+        console.warn(`Failed to load custom texture for ${customTextureUrl}, using Steve skin`)
+        const steveSkinUrl = 'https://starlightskins.lunareclipse.studio/render/skin/steve/default'
+        loader.load(
+          steveSkinUrl,
+          (loadedTexture) => {
+            loadedTexture.magFilter = THREE.NearestFilter
+            loadedTexture.minFilter = THREE.NearestFilter
+            loadedTexture.generateMipmaps = false
+            loadedTexture.flipY = false
+            loadedTexture.wrapS = THREE.ClampToEdgeWrapping
+            loadedTexture.wrapT = THREE.ClampToEdgeWrapping
+            material.map = loadedTexture
+            material.needsUpdate = true
+          },
+          undefined,
+          (err2) => {
+            // If even Steve skin fails, use default texture
+            console.warn(`Failed to load Steve skin, using default texture`)
+            loadTexture(texture, loadedTexture => {
+              loadedTexture.magFilter = THREE.NearestFilter
+              loadedTexture.minFilter = THREE.NearestFilter
+              loadedTexture.flipY = false
+              loadedTexture.wrapS = THREE.RepeatWrapping
+              loadedTexture.wrapT = THREE.RepeatWrapping
+              material.map = loadedTexture
+              material.needsUpdate = true
+            })
+          }
+        )
       }
     )
   } else {
@@ -230,6 +252,7 @@ function getMesh (texture, jsonModel, customTextureUrl = null) {
       loadedTexture.wrapS = THREE.RepeatWrapping
       loadedTexture.wrapT = THREE.RepeatWrapping
       material.map = loadedTexture
+      material.needsUpdate = true
     })
   }
 

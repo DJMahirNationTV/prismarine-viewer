@@ -7,7 +7,7 @@ const { dispose3 } = require('./dispose')
 const { createCanvas } = require('canvas')
 
 function getSkinUrl (username) {
-  return `https://mineskin.eu/skin/${username}`
+  return `https://starlightskins.lunareclipse.studio/render/skin/${username}/default`
 }
 
 function getEntityMesh (entity, scene) {
