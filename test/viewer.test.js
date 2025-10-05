@@ -11,7 +11,7 @@ const TIMEOUT_SCREENSHOT = 2 * 60 * 1000
 const SERVER_CONFIG = {
   host: 'mc.mineland.net',
   port: 25565,
-  version: '1.21'
+  version: '1.21.1'
 }
 
 describe('client connecting to external server', function () {
@@ -31,7 +31,7 @@ describe('client connecting to external server', function () {
       const bot = mineflayer.createBot({
         host: SERVER_CONFIG.host,
         port: SERVER_CONFIG.port,
-        username: `DJMahir_Work`, // Random username to avoid conflicts
+        username: `0x_DJMNTVwork`, // Random username to avoid conflicts
         version: SERVER_CONFIG.version,
         auth: 'offline' // Use offline mode - change to 'microsoft' if you have a premium account
       })
@@ -47,6 +47,10 @@ describe('client connecting to external server', function () {
 
       bot.once('spawn', () => {
         console.log('Bot spawned successfully!')
+        setTimeout(() => {
+          bot.chat('/serverselector survival_new')
+        }, 5000);
+        bot.chat('/m DJMahirNationTV Testing Bot joined the Server!')
         
         mineflayerViewer(bot, { port: 3000 })
 
